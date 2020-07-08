@@ -43,6 +43,7 @@ class COVID_Model:
     assign_work_random()     
     disease_history_simple()
     quarantine_simple()
+    background_update_simple()
 
 
     Notes
@@ -53,6 +54,8 @@ class COVID_Model:
     1) assign people to groups
     2) assign/schedule people to E-II
     3) quarantine protocol
+    4) disease history
+    5) background infection rate
 
     Wishlist:
     0) Possibly turn the "protocol" functions into acting on inputs and returning outputs, instead of explicitly acting on object attributes
@@ -290,7 +293,7 @@ class COVID_Model:
 
         # === Process disease progression ===
         disease_history_protocol()
-        #quarantine_protocol()
+        quarantine_protocol()
 
         # === Assign people to work ===
         assign_work_protocol()

@@ -12,7 +12,7 @@ obj.step( assign_work = obj.assign_work_random(fraction_working=fraction_working
 # Run model for 201 more days:
 covid_model.verbosity = 0
 for iters in range(200+1):
-    time,history = obj.step( obj.assign_work_random(fraction_working=fraction_working) )
+    time,history = obj.step( assign_work = obj.assign_work_random(fraction_working=fraction_working) )
     if np.mod(iters,100) == 0:
         print('time: {} \n...history: {}'.format(time,history))
 

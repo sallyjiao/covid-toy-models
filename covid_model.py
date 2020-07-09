@@ -64,9 +64,9 @@ class COVID_Model:
     3) Better treatment of base infectiousness if people aren't in same lab? (i.e. infectiousness from common spaces)
     4) Quarantining people in contact with infected people, but not infected themselves
     5) Coupling in SB dynamics (currently SB is a constant background rate for when people are out of lab)
-    5) Lab shutdowns
-    6) Individual "resistance factor" (i.e. PPE effects on preventing inhaling virus, not just reducing virus emission)  
-    7) Measuring R0 for an individual... (perhaps have to seed one person, and repeat the experiment multiple times
+    6) Lab shutdowns
+    7) Individual "resistance factor" (i.e. PPE effects on preventing inhaling virus, not just reducing virus emission)  
+    8) Measuring R0 for an individual... (perhaps have to seed one person, and repeat the experiment multiple times
     """
 
     def __init__(self, n_persons, beta0, contact_prob, dt=1.0, init_protocol=0, asymptomatic_rate = 0.25):
@@ -253,7 +253,7 @@ class COVID_Model:
                 * (self.group_contact_matrix * in_EII_matrix) @ (self.indv_infectiousness * self.indv_factor * (~self.quarantined))
 
         # ... and account for background infection rate
-        force_of_infection[ mask_currently_working] = self.dt * self.EII_background #background infection rate in hallways, common areas
+        force_of_infection[ mask_currently_working] += self.dt * self.EII_background #background infection rate in hallways, common areas
         force_of_infection[~mask_currently_working] = self.dt * self.SB_background #background infection rate in greater SB community
 
         if verbosity > 2: print('...exposed individuals: {}'.format(np.argwhere(force_of_infection != 0.0).T))

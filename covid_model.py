@@ -170,7 +170,7 @@ class COVID_Model:
         if verbosity > 2: print('...Num at home: {}'.format((~mask_currently_working).sum()))
 
 
-    def disease_history_simple(self):
+    def disease_history_simple(self, **kwargs):
         """Simple model of diease history, infectiousness, symptoms, etc.
         Returns
         -------
@@ -206,7 +206,7 @@ class COVID_Model:
         if verbosity > 2: print('...indv_infectiousness: {}'.format(self.indv_infectiousness))
         if verbosity > 2: print('...symptomatics: {}'.format(self.symptomatic))
 
-    def quarantine_simple(self):
+    def quarantine_simple(self, **kwargs):
         """Simple quarantine protocol: only quarantine infected, symptomatic people
         Notes
         -----
@@ -217,7 +217,7 @@ class COVID_Model:
         self.quarantined[ self.symptomatic ] = True
 
 
-    def background_update_simple(self):
+    def background_update_simple(self, **kwargs):
         """ Update the background infection rate
         Returns
         -------
@@ -277,29 +277,40 @@ class COVID_Model:
         self.time_left_in_EII[ self.time_left_in_EII <= 0.0 ] = 0.0
         self.time += self.dt
 
-    def step(self, disease_history=None, quarantine=None, assign_work=None, background_update=None):
+    def step(self, disease_history=None, quarantine=None, assign_work=None, background_update=None, **kwargs):
         """Perform one step of the disease propagation dynamics. Envision allowing swapping custom protocols
         """
         if verbosity > 1: print('\n===== TIME {} ====='.format(self.time))
         #  === Define protocol (just to make more apparent what functions to change) ===
         if disease_history is None:
             disease_history_protocol = self.disease_history_simple
+        else:
+            disease_history_protocol = disease_history
+
         if quarantine is None:
             quarantine_protocol = self.quarantine_simple
+        else:
+            quarantine_protocol = quarantine
+
         if assign_work is None:
             assign_work_protocol = self.assign_work_random
+        else:
+            assign_work_protocol = assign_work
+
         if background_update is None:
             background_update_protocol = self.background_update_simple
+        else:
+            background_update_protocol = background_update
 
         # === Process disease progression ===
-        disease_history_protocol()
-        quarantine_protocol()
+        disease_history_protocol(**kwargs)
+        quarantine_protocol(**kwargs)
 
         # === Assign people to work ===
-        assign_work_protocol()
+        assign_work_protocol(**kwargs)
 
         # === Run update ===
-        self.EII_background, self.SB_background = background_update_protocol()
+        self.EII_background, self.SB_background = background_update_protocol(**kwargs)
         self.propagate()
 
         # === Record Keeping ===

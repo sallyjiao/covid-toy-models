@@ -92,11 +92,13 @@ class COVID_Model:
         self.group_contact_matrix = np.ones( (self.n_persons, self.n_persons) )
         self.time_left_in_EII = np.zeros( self.n_persons )
         self.quarantined = np.zeros( self.n_persons, dtype=bool )
+        self.lab_shutdown_time = np.zeros( self.n_persons )
 
         self.t0_infection = -1.0 * np.ones( self.n_persons )
         self.community_infection = np.zeros( self.n_persons, dtype=bool )
         self.symptomatic_if_infected = np.random.choice([True, False], size=self.n_persons, p=[1-asymptomatic_rate, asymptomatic_rate])
         self.symptomatic = np.zeros( self.n_persons, dtype=bool )
+        self.symptomatic_prev = np.zeros( self.n_persons, dtype=bool )
         self.indv_factor = np.ones( self.n_persons )
         self.indv_factor[ self.symptomatic_if_infected ] = self.asymptomatic_factor
         self.indv_infectiousness = np.zeros(self.n_persons)
@@ -128,7 +130,7 @@ class COVID_Model:
             self.group_contact_matrix[ np.ix_(members,members) ] = 1
 
 
-    def assign_work_random(self, avg_lab_time = 1.0, fraction_working = 0.1, lab_constraint = 0):
+    def assign_work_random(self, avg_lab_time = 1.0, fraction_working = 0.1, lab_constraint = 0, **kwargs):
         """Assigns people to work, randomly. Assume common lab time for everyone.
         Parameters
         ----------
@@ -185,6 +187,7 @@ class COVID_Model:
         I/O: 
             modifies self.indv_infectiousness (scaled 0~1)
             modifies self.symptomatic
+            modifies self.symptomatic_prev
         """
         if verbosity > 2: print('\n--- Assigning disease history/progression, infectiousness, symptoms ---')
         shedding_peak = 2 #units: days
@@ -200,7 +203,8 @@ class COVID_Model:
         self.indv_infectiousness[ time_spent_infected > shedding_peak ] = 1.0 - time_spent_infected[ time_spent_infected > shedding_peak ] / (shedding_end-shedding_peak)
         self.indv_infectiousness[~actively_shedding] = 0
 
-        self.symptomatic[ (self.t0_infection > 0) * (time_spent_infected >= symptom_onset) * (time_spent_infected < symptom_end) ] = True
+        self.symptomatic_prev = np.copy(self.symptomatic)
+        self.symptomatic = (self.t0_infection > 0) * (time_spent_infected >= symptom_onset) * (time_spent_infected < symptom_end)
         self.symptomatic *= self.symptomatic_if_infected
 
         if verbosity > 2: print('...indv_infectiousness: {}'.format(self.indv_infectiousness))
@@ -214,8 +218,19 @@ class COVID_Model:
             modifies self.quarantined
         """
         if verbosity > 2: print('\n--- Quarantining symptomatics ---')
-        self.quarantined[ self.symptomatic ] = True
+        self.quarantined = self.symptomatic
 
+    def quarantine_lab_shutdown(self, lab_shutdown_max=5, **kwargs):
+        """Lab-shutdown quarantine protocol: quarantines infected, symptomatic people and the labs of newly symptomatic people
+
+        Notes
+        -----
+        I/O:
+            modifies self.quarantined
+        """
+        if verbosity > 2: print('\n--- Quarantining symptomatics and their groups (' + str(lab_shutdown_max) + ' days) ---')
+        self.lab_shutdown_time[ np.in1d(self.group_id, self.group_id[self.symptomatic*~(self.symptomatic_prev) ]) ] = self.time
+        self.quarantined = self.symptomatic + ((self.lab_shutdown_time-self.time) > lab_shutdown_max)
 
     def background_update_simple(self, **kwargs):
         """ Update the background infection rate

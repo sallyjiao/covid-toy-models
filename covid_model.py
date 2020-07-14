@@ -69,7 +69,7 @@ class COVID_Model:
     8) Measuring R0 for an individual... (perhaps have to seed one person, and repeat the experiment multiple times
     """
 
-    def __init__(self, n_persons, beta0, contact_prob, dt=1.0, init_protocol=0, asymptomatic_rate = 0.25):
+    def __init__(self, n_persons, beta0, contact_prob, dt=1.0, init_protocol=0, asymptomatic_rate = 0.25, reporter_names=[]):
         # === store variables ===
         self.n_persons = n_persons
 
@@ -102,6 +102,10 @@ class COVID_Model:
         self.indv_factor = np.ones( self.n_persons )
         self.indv_factor[ self.symptomatic_if_infected ] = self.asymptomatic_factor
         self.indv_infectiousness = np.zeros(self.n_persons)
+
+        self.reporters = {}
+        for rep_name in reporter_names:
+            self.reporters[rep_name] = []
 
         if init_protocol == 0: #simple random initializaton protocol
             if verbosity > 0: print("=== Simple random initialization protocol ===")
@@ -232,6 +236,18 @@ class COVID_Model:
         self.lab_shutdown_time[ np.in1d(self.group_id, self.group_id[self.symptomatic*~(self.symptomatic_prev) ]) ] = self.time
         self.quarantined = self.symptomatic + ((self.lab_shutdown_time-self.time) > lab_shutdown_max)
 
+    def update_reporters(self):
+        """Tracks relevant metrics
+
+        Notes
+        -----
+        I/O:
+            modifies self.reporters
+        """""
+        for rep_name in self.reporters.keys():
+            if rep_name == 'incidence':
+                self.reporters[rep_name].append((self.symptomatic * ~(self.symptomatic_prev)).sum())
+
     def background_update_simple(self, **kwargs):
         """ Update the background infection rate
         Returns
@@ -334,6 +350,7 @@ class COVID_Model:
         sorted_history = np.argsort(infection_history[2,:])
         infection_history = infection_history[:,sorted_history]
         self.infection_history = infection_history
+        self.update_reporters()
 
         # === Track R for each invidual ===
         # not sure how to allocate yet if there are multiple infectious people about...

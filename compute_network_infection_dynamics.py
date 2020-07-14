@@ -1,11 +1,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+# returns tau matrix 
+# tau[i, j]: average amount of time people i and j spend in "close" proximity in one timestep
+# tau should be a symmetric matrix
+# tau can be dependent on time and the specific people
+# for now, is just a constant value-- Kevin will build this out
+def tau(i_step, n_people):
+    return 0.01 * np.ones((n_people, n_people))
+
 # propagates infection by 1 timestep
 # takes in a binary array of length n_people, 1=sick, 0=not sick
 def step(is_infected, p_spread):
     n_people = len(is_infected)
     is_infected_new = np.zeros(n_people) # the people who are sick after this timestep
+
     for i_person in range(n_people):
 
         # if previously infected, still infected after this timestep
@@ -30,7 +39,12 @@ def step(is_infected, p_spread):
 #                   should be a symmetric matrix
 #   p_init: probability that someone is infected in the 0th timestep (assume uniform across people for now)
 #   n_steps: number of timesteps
-def run_instance(n_people, p_spread, p_init, n_steps):
+def run_instance(n_people, p_init, n_steps):
+
+    # model the probability person i spreads to person j in a given timestep as 1-e^(-\lambda * \tau)
+    # \tau is the average time that i and j spend in "close" proximity in one timestep
+    # this lambda is the scale factor
+    lambda_param = 1.
 
     # random set of people are infected at 0th timestep
     is_infected = np.random.choice([0, 1], size=(n_people), replace=True, p=[1-p_init, p_init])
@@ -42,6 +56,7 @@ def run_instance(n_people, p_spread, p_init, n_steps):
     # if someone is infected, we need to run the steps
     if not np.sum(is_infected) == 0:
         for i_step in range(1, n_steps):
+            p_spread = 1 - np.exp(-lambda_param * tau(i_step, n_people))
             is_infected_accum[i_step, :] = step(is_infected_accum[i_step-1, :], p_spread)
 
     return is_infected_accum
@@ -53,20 +68,13 @@ def run_model():
     n_steps = 100 # number of timesteps
     n_instances = 1000 # number of instances of the model to run to get an average
 
-    # p_spread[i, j]: probability that person i will infect person j in one timestep, if person i is infected
-    #                 should be a symmetric matrix
-    # for now, everyone has an equal chance of spreading to everyone else at every timestep
-    # really, should replace with p_spread computed from time spent in close proximity
-    # so p_spread should be unique for each [i, j] pair (still symmetric) and also time-dependent
-    p_spread = 0.01 * np.ones((n_people, n_people)) 
-
     # probability that someone is infected in the 0th timestep (assume uniform across people for now)
     # should set at whatever population believed to be for SB?
     p_init = 0.2 
 
     is_infected_accum_all_instance = np.zeros((n_steps, n_people))
     for i_instance in range(n_instances):
-        is_infected_accum_all_instance += run_instance(n_people, p_spread, p_init, n_steps)
+        is_infected_accum_all_instance += run_instance(n_people, p_init, n_steps)
     is_infected_accum_all_instance /= float(n_instances)
 
     # plot average trajectory of infection of person 0

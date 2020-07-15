@@ -92,11 +92,13 @@ class COVID_Model:
         self.group_contact_matrix = np.ones( (self.n_persons, self.n_persons) )
         self.time_left_in_EII = np.zeros( self.n_persons )
         self.quarantined = np.zeros( self.n_persons, dtype=bool )
+        self.lab_shutdown_time = np.zeros( self.n_persons )
 
         self.t0_infection = -1.0 * np.ones( self.n_persons )
         self.community_infection = np.zeros( self.n_persons, dtype=bool )
         self.symptomatic_if_infected = np.random.choice([True, False], size=self.n_persons, p=[1-asymptomatic_rate, asymptomatic_rate])
         self.symptomatic = np.zeros( self.n_persons, dtype=bool )
+        self.symptomatic_prev = np.zeros( self.n_persons, dtype=bool )
         self.indv_factor = np.ones( self.n_persons )
         self.indv_factor[ self.symptomatic_if_infected ] = self.asymptomatic_factor
         self.indv_infectiousness = np.zeros(self.n_persons)
@@ -106,6 +108,12 @@ class COVID_Model:
             self.init_simple()
         else:
             if verbosity > 0: print("=== System not initialized, assuming everyone in contact with everyone all the time ===")
+
+
+        self.community_s = 1.0
+        self.community_i = 0.0
+        self.community_r = 0.0
+        self.community_history = []
 
 
     def init_simple(self):
@@ -128,7 +136,7 @@ class COVID_Model:
             self.group_contact_matrix[ np.ix_(members,members) ] = 1
 
 
-    def assign_work_random(self, avg_lab_time = 1.0, fraction_working = 0.1, lab_constraint = 0):
+    def assign_work_random(self, avg_lab_time = 1.0, fraction_working = 0.1, lab_constraint = 0, **kwargs):
         """Assigns people to work, randomly. Assume common lab time for everyone.
         Parameters
         ----------
@@ -185,6 +193,7 @@ class COVID_Model:
         I/O: 
             modifies self.indv_infectiousness (scaled 0~1)
             modifies self.symptomatic
+            modifies self.symptomatic_prev
         """
         if verbosity > 2: print('\n--- Assigning disease history/progression, infectiousness, symptoms ---')
         shedding_peak = 2 #units: days
@@ -200,11 +209,17 @@ class COVID_Model:
         self.indv_infectiousness[ time_spent_infected > shedding_peak ] = 1.0 - time_spent_infected[ time_spent_infected > shedding_peak ] / (shedding_end-shedding_peak)
         self.indv_infectiousness[~actively_shedding] = 0
 
-        self.symptomatic[ (self.t0_infection > 0) * (time_spent_infected >= symptom_onset) * (time_spent_infected < symptom_end) ] = True
+        self.symptomatic_prev = np.copy(self.symptomatic)
+        self.symptomatic = (self.t0_infection > 0) * (time_spent_infected >= symptom_onset) * (time_spent_infected < symptom_end)
         self.symptomatic *= self.symptomatic_if_infected
 
         if verbosity > 2: print('...indv_infectiousness: {}'.format(self.indv_infectiousness))
         if verbosity > 2: print('...symptomatics: {}'.format(self.symptomatic))
+
+
+    def quarantine_none(self, **kwargs):
+        """No quarantine"""
+        self.quarantined[:] = False
 
     def quarantine_simple(self, **kwargs):
         """Simple quarantine protocol: only quarantine infected, symptomatic people
@@ -214,8 +229,19 @@ class COVID_Model:
             modifies self.quarantined
         """
         if verbosity > 2: print('\n--- Quarantining symptomatics ---')
-        self.quarantined[ self.symptomatic ] = True
+        self.quarantined = self.symptomatic
 
+    def quarantine_lab_shutdown(self, lab_shutdown_max=5, **kwargs):
+        """Lab-shutdown quarantine protocol: quarantines infected, symptomatic people and the labs of newly symptomatic people
+
+        Notes
+        -----
+        I/O:
+            modifies self.quarantined
+        """
+        if verbosity > 2: print('\n--- Quarantining symptomatics and their groups (' + str(lab_shutdown_max) + ' days) ---')
+        self.lab_shutdown_time[ np.in1d(self.group_id, self.group_id[self.symptomatic*~(self.symptomatic_prev) ]) ] = self.time
+        self.quarantined = self.symptomatic + ((self.lab_shutdown_time-self.time) > lab_shutdown_max)
 
     def background_update_simple(self, **kwargs):
         """ Update the background infection rate
@@ -237,6 +263,44 @@ class COVID_Model:
         if verbosity > 2: print('...EII background: {}\n...SB background: {}'.format(EII_background, self.SB_background_rate))
         return EII_background, self.SB_background_rate
 
+    def background_update_communitySIR(self, beta=0.2, gamma=0.2, **kwargs):
+        """ Update the background infection rate
+        Returns
+        -------
+        EII_background : float
+        SB_background : float
+
+        Notes
+        -----
+        EII dynamics: add up infectious people in EII and scales by some factor (self.EI_background_rate)
+        SB dynamics: simple discretized SIR, i.e. may see some time-scale discretization effects...
+            in particular, the individuals follow exponential distribution, in essence already time-integrated, whereas the SIR assumes constant risk profile over the entire day
+            i.e. due to discretization currently individuals feel a bit more community infection than the average person in the community. 
+            hopefully this is a small deviation if beta (~0.2) and dt are not too big.
+        """
+        if verbosity > 2: print('\n--- Updating background exposure ---')
+        
+        # === EII rate ===
+        mask_currently_working = (self.time_left_in_EII > 0)
+        EII_background = self.EII_background_rate \
+                  * ( self.indv_infectiousness[ mask_currently_working ]
+                  * self.indv_factor[ mask_currently_working ]
+                  * (~self.quarantined[ mask_currently_working ]) ).sum()
+
+        # === Community rate ===
+        ds = - beta * self.community_s * self.community_i
+        di =   beta * self.community_s * self.community_i - gamma*self.community_i
+        dr =                                                gamma*self.community_i
+        self.community_s += ds
+        self.community_i += di
+        self.community_r += dr
+        self.SB_background = beta * self.community_i
+
+        # === cleanup ===
+        if verbosity > 2: print('...EII background: {}\n...SB background: {}'.format(EII_background, self.SB_background))
+        if verbosity > 2: print('...Community status: susceptible {}, infectious {}, recovered {}'.format(self.community_s, self.community_i, self.community_r))
+        return EII_background, self.SB_background
+ 
 
     def propagate(self):
         """Exponential dose-response propagation dynamics. for EII
@@ -319,6 +383,7 @@ class COVID_Model:
         sorted_history = np.argsort(infection_history[2,:])
         infection_history = infection_history[:,sorted_history]
         self.infection_history = infection_history
+        self.community_history.append([ self.community_s, self.community_i, self.community_r ])
 
         # === Track R for each invidual ===
         # not sure how to allocate yet if there are multiple infectious people about...

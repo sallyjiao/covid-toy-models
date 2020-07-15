@@ -1,0 +1,19 @@
+parameters:
+fraction_working = 0.3
+asymptomatic_rate = 0.25
+n_people = 1500
+n_model_runs = 50
+n_days_max = 200
+base_infectiousness = 0.25
+prob_close_contact = 0.25
+dt = 1.0
+
+files:
+cm_inc_accum_growth_noshutdown.txt
+cm_inc_accum_growth_labshutdown3.txt
+cm_inc_accum_growth_labshutdown5.txt
+cm_inc_accum_growth_labshutdown7.txt
+inc_accum_noshutdown.txt
+inc_accum_labshutdown3.txt
+inc_accum_labshutdown5.txt
+inc_accum_labshutdown7.txt

@@ -69,7 +69,7 @@ class COVID_Model:
     8) Measuring R0 for an individual... (perhaps have to seed one person, and repeat the experiment multiple times
     """
 
-    def __init__(self, n_persons, beta0, contact_prob, dt=1.0, init_protocol=0, asymptomatic_rate = 0.25):
+    def __init__(self, n_persons, beta0, contact_prob, dt=1.0, init_protocol=0, asymptomatic_rate = 0.25, reporter_names=[]):
         # === store variables ===
         self.n_persons = n_persons
 
@@ -92,7 +92,7 @@ class COVID_Model:
         self.group_contact_matrix = np.ones( (self.n_persons, self.n_persons) )
         self.time_left_in_EII = np.zeros( self.n_persons )
         self.quarantined = np.zeros( self.n_persons, dtype=bool )
-        self.lab_shutdown_time = np.zeros( self.n_persons )
+        self.lab_shutdown_time = np.ones( self.n_persons ) * -100000
 
         self.t0_infection = -1.0 * np.ones( self.n_persons )
         self.community_infection = np.zeros( self.n_persons, dtype=bool )
@@ -102,6 +102,10 @@ class COVID_Model:
         self.indv_factor = np.ones( self.n_persons )
         self.indv_factor[ self.symptomatic_if_infected ] = self.asymptomatic_factor
         self.indv_infectiousness = np.zeros(self.n_persons)
+
+        self.reporters = {}
+        for rep_name in reporter_names:
+            self.reporters[rep_name] = []
 
         if init_protocol == 0: #simple random initializaton protocol
             if verbosity > 0: print("=== Simple random initialization protocol ===")
@@ -159,6 +163,8 @@ class COVID_Model:
         while num_currently_working < max_num_working: #assign more people to work
             # choose random person
             healthy_nonworking = (~mask_currently_working) * (~self.quarantined)
+            if healthy_nonworking.sum() == 0: # no more healthy nonworkers
+                break
             new_worker = np.random.choice( np.argwhere( healthy_nonworking ).flatten() )
 
             # check lab constraints aren't violated
@@ -241,7 +247,19 @@ class COVID_Model:
         """
         if verbosity > 2: print('\n--- Quarantining symptomatics and their groups (' + str(lab_shutdown_max) + ' days) ---')
         self.lab_shutdown_time[ np.in1d(self.group_id, self.group_id[self.symptomatic*~(self.symptomatic_prev) ]) ] = self.time
-        self.quarantined = self.symptomatic + ((self.lab_shutdown_time-self.time) > lab_shutdown_max)
+        self.quarantined = self.symptomatic + ((self.time-self.lab_shutdown_time) < lab_shutdown_max)
+
+    def update_reporters(self):
+        """Tracks relevant metrics
+
+        Notes
+        -----
+        I/O:
+            modifies self.reporters
+        """""
+        for rep_name in self.reporters.keys():
+            if rep_name == 'incidence':
+                self.reporters[rep_name].append((self.symptomatic * ~(self.symptomatic_prev)).sum())
 
     def background_update_simple(self, **kwargs):
         """ Update the background infection rate
@@ -383,6 +401,7 @@ class COVID_Model:
         sorted_history = np.argsort(infection_history[2,:])
         infection_history = infection_history[:,sorted_history]
         self.infection_history = infection_history
+        self.update_reporters()
         self.community_history.append([ self.community_s, self.community_i, self.community_r ])
 
         # === Track R for each invidual ===

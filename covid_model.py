@@ -110,6 +110,12 @@ class COVID_Model:
             if verbosity > 0: print("=== System not initialized, assuming everyone in contact with everyone all the time ===")
 
 
+        self.community_s = 1.0
+        self.community_i = 0.0
+        self.community_r = 0.0
+        self.community_history = []
+
+
     def init_simple(self):
         self.assign_group_random()
         #possibly draw individual factors from a distribution?
@@ -210,6 +216,11 @@ class COVID_Model:
         if verbosity > 2: print('...indv_infectiousness: {}'.format(self.indv_infectiousness))
         if verbosity > 2: print('...symptomatics: {}'.format(self.symptomatic))
 
+
+    def quarantine_none(self, **kwargs):
+        """No quarantine"""
+        self.quarantined[:] = False
+
     def quarantine_simple(self, **kwargs):
         """Simple quarantine protocol: only quarantine infected, symptomatic people
         Notes
@@ -252,6 +263,44 @@ class COVID_Model:
         if verbosity > 2: print('...EII background: {}\n...SB background: {}'.format(EII_background, self.SB_background_rate))
         return EII_background, self.SB_background_rate
 
+    def background_update_communitySIR(self, beta=0.2, gamma=0.2, **kwargs):
+        """ Update the background infection rate
+        Returns
+        -------
+        EII_background : float
+        SB_background : float
+
+        Notes
+        -----
+        EII dynamics: add up infectious people in EII and scales by some factor (self.EI_background_rate)
+        SB dynamics: simple discretized SIR, i.e. may see some time-scale discretization effects...
+            in particular, the individuals follow exponential distribution, in essence already time-integrated, whereas the SIR assumes constant risk profile over the entire day
+            i.e. due to discretization currently individuals feel a bit more community infection than the average person in the community. 
+            hopefully this is a small deviation if beta (~0.2) and dt are not too big.
+        """
+        if verbosity > 2: print('\n--- Updating background exposure ---')
+        
+        # === EII rate ===
+        mask_currently_working = (self.time_left_in_EII > 0)
+        EII_background = self.EII_background_rate \
+                  * ( self.indv_infectiousness[ mask_currently_working ]
+                  * self.indv_factor[ mask_currently_working ]
+                  * (~self.quarantined[ mask_currently_working ]) ).sum()
+
+        # === Community rate ===
+        ds = - beta * self.community_s * self.community_i
+        di =   beta * self.community_s * self.community_i - gamma*self.community_i
+        dr =                                                gamma*self.community_i
+        self.community_s += ds
+        self.community_i += di
+        self.community_r += dr
+        self.SB_background = beta * self.community_i
+
+        # === cleanup ===
+        if verbosity > 2: print('...EII background: {}\n...SB background: {}'.format(EII_background, self.SB_background))
+        if verbosity > 2: print('...Community status: susceptible {}, infectious {}, recovered {}'.format(self.community_s, self.community_i, self.community_r))
+        return EII_background, self.SB_background
+ 
 
     def propagate(self):
         """Exponential dose-response propagation dynamics. for EII
@@ -334,6 +383,7 @@ class COVID_Model:
         sorted_history = np.argsort(infection_history[2,:])
         infection_history = infection_history[:,sorted_history]
         self.infection_history = infection_history
+        self.community_history.append([ self.community_s, self.community_i, self.community_r ])
 
         # === Track R for each invidual ===
         # not sure how to allocate yet if there are multiple infectious people about...

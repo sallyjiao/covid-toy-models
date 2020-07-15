@@ -92,7 +92,7 @@ class COVID_Model:
         self.group_contact_matrix = np.ones( (self.n_persons, self.n_persons) )
         self.time_left_in_EII = np.zeros( self.n_persons )
         self.quarantined = np.zeros( self.n_persons, dtype=bool )
-        self.lab_shutdown_time = np.zeros( self.n_persons )
+        self.lab_shutdown_time = np.ones( self.n_persons ) * -100000
 
         self.t0_infection = -1.0 * np.ones( self.n_persons )
         self.community_infection = np.zeros( self.n_persons, dtype=bool )
@@ -157,6 +157,8 @@ class COVID_Model:
         while num_currently_working < max_num_working: #assign more people to work
             # choose random person
             healthy_nonworking = (~mask_currently_working) * (~self.quarantined)
+            if healthy_nonworking.sum() == 0: # no more healthy nonworkers
+                break
             new_worker = np.random.choice( np.argwhere( healthy_nonworking ).flatten() )
 
             # check lab constraints aren't violated
@@ -234,7 +236,7 @@ class COVID_Model:
         """
         if verbosity > 2: print('\n--- Quarantining symptomatics and their groups (' + str(lab_shutdown_max) + ' days) ---')
         self.lab_shutdown_time[ np.in1d(self.group_id, self.group_id[self.symptomatic*~(self.symptomatic_prev) ]) ] = self.time
-        self.quarantined = self.symptomatic + ((self.lab_shutdown_time-self.time) > lab_shutdown_max)
+        self.quarantined = self.symptomatic + ((self.time-self.lab_shutdown_time) < lab_shutdown_max)
 
     def update_reporters(self):
         """Tracks relevant metrics

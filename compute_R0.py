@@ -6,8 +6,8 @@ fraction_working = 0.3
 asymptomatic_rate = 0.25
 n_people = 500
 covid_model.verbosity = 2
-base_infectiousness = 1
-contact_prob = 1
+base_infectiousness = 0.25
+contact_prob = 0.25
 
 n_model_runs = 1
 n_days_max = 20

@@ -4,16 +4,16 @@ import matplotlib.pyplot as plt
 
 fraction_working = 0.3
 asymptomatic_rate = 0.25
-n_people = 1500
+n_people = 500
 covid_model.verbosity = 0
 
 n_model_runs = 50
-n_days_max = 200
+n_days_max = 100
 block_size = 10 # in units of dt
 cm_inc_growth_accum = np.zeros(n_days_max-1)
 inc_accum = np.zeros(n_days_max)
 
-lab_shutdown_max = 5
+lab_shutdown_max = 0
 
 for i_run in range(n_model_runs):
     # initialize model
